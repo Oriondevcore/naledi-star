@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PrivChat</title>
+  <meta name="theme-color" content="#080809">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="/icons/icon-192.svg">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--bg:#080809;--surface:#111114;--accent:#00e5ff;--text:#e0e0e0;--text-dim:#777;--input-bg:#1a1a1e;--msg-me:#00e5ff;--msg-them:#2a2a2e;--msg-text:#111}
+    html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}
+    #lock{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;padding:2rem;gap:1.2rem}
+    #lock.hidden{display:none}
+    #lock h1{font-size:2rem;color:var(--accent)}
+    #lock input{background:var(--input-bg);border:1px solid #333;color:var(--text);padding:.8rem 1.2rem;border-radius:12px;font-size:1.1rem;width:200px;text-align:center;outline:none}
+    #lock input:focus{border-color:var(--accent)}
+    #lock button{background:var(--accent);color:#000;border:none;padding:.8rem 2rem;border-radius:12px;font-size:1rem;font-weight:600;cursor:pointer}
+    #lock .error{color:#ff4444;font-size:.9rem}
+    #chat{display:none;height:100vh;flex-direction:column}
+    #chat.active{display:flex}
+    #header{display:flex;align-items:center;gap:.6rem;padding:.7rem 1rem;background:var(--surface);border-bottom:1px solid #1a1a1e;-webkit-app-region:drag;flex-shrink:0}
+    #header .av{width:34px;height:34px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem}
+    #header .nm{font-weight:600;font-size:.95rem;flex:1}
+    #header .st{font-size:.7rem;color:var(--text-dim)}
+    #header .back-btn{background:none;border:none;color:var(--accent);font-size:1.4rem;cursor:pointer;padding:0 4px}
+    #msgs{flex:1;overflow-y:auto;padding:.6rem .8rem;display:flex;flex-direction:column;gap:.4rem;scroll-behavior:smooth}
+    .msg{max-width:82%;padding:.55rem .85rem;border-radius:14px;line-height:1.4;font-size:.92rem;word-wrap:break-word;animation:fadeIn .15s}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+    .msg.me{align-self:flex-end;background:var(--msg-me);color:var(--msg-text);border-bottom-right-radius:3px}
+    .msg.them{align-self:flex-start;background:var(--msg-them);border-bottom-left-radius:3px}
+    .msg .sn{font-size:.65rem;color:var(--accent);font-weight:600;margin-bottom:1px}
+    .msg .tm{font-size:.6rem;color:var(--text-dim);margin-top:3px;text-align:right}
+    .msg .tm .tts-btn{background:none;border:none;color:var(--accent);cursor:pointer;font-size:.7rem;padding:0 4px}
+    .msg img{max-width:100%;border-radius:8px;display:block;margin:4px 0}
+    .msg audio{width:180px;height:36px;display:block;margin:4px 0}
+    .msg .voice-badge{display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(0,229,255,.1);border-radius:8px;font-size:.8rem;margin:4px 0;cursor:pointer}
+    .msg .voice-badge:hover{background:rgba(0,229,255,.2)}
+    #typing{display:none;align-self:flex-start;background:var(--msg-them);padding:.5rem .8rem;border-radius:14px;border-bottom-left-radius:3px;gap:3px}
+    #typing.active{display:flex}
+    #typing span{width:6px;height:6px;border-radius:50%;background:#666;animation:bounce 1.2s infinite}
+    #typing span:nth-child(2){animation-delay:.2s}
+    #typing span:nth-child(3){animation-delay:.4s}
+    @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+    #bar{display:flex;gap:.4rem;padding:.6rem .8rem;background:var(--surface);border-top:1px solid #1a1a1e;flex-shrink:0;align-items:center}
+    #bar input{flex:1;background:var(--input-bg);border:1px solid #333;color:var(--text);padding:.7rem 1rem;border-radius:22px;font-size:.92rem;outline:none}
+    #bar input:focus{border-color:var(--accent)}
+    #bar button{width:38px;height:38px;border-radius:50%;flex-shrink:0;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1rem}
+    #bar .send-btn{background:var(--accent);color:#000}
+    #bar .send-btn:disabled{opacity:.4;cursor:default}
+    #bar .action-btn{background:var(--input-bg);color:var(--text);font-size:1.1rem;border:1px solid #333}
+    #bar .action-btn:active{border-color:var(--accent)}
+    #toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#333;color:var(--text);padding:.5rem 1rem;border-radius:10px;font-size:.82rem;opacity:0;transition:opacity .3s;pointer-events:none;z-index:100}
+    #toast.show{opacity:1}
+    @media(display-mode:standalone){#header{padding-top:1.2rem}}
+    .hidden{display:none!important}
+  </style>
+</head>
+<body>
+<div id="lock">
+  <h1>PrivChat</h1>
+  <input type="password" id="pin" placeholder="PIN" maxlength="6" inputmode="numeric" autocomplete="off">
+  <button onclick="unlock()">Unlock</button>
+  <div class="error" id="lockErr"></div>
+</div>
+
+<div id="chat">
+  <div id="header">
+    <button class="back-btn" onclick="exitChat()">&larr;</button>
+    <div class="av">PC</div>
+    <div class="nm">PrivChat</div>
+    <div class="st" id="status">&#9679; connected</div>
+  </div>
+  <div id="msgs"></div>
+  <div id="bar">
+    <button class="action-btn" onclick="record()" id="voiceBtn">&#127908;</button>
+    <button class="action-btn" onclick="attach()" id="attachBtn">&#128206;</button>
+    <input type="file" id="fileInput" accept="image/*" multiple style="display:none">
+    <input type="file" id="camInput" accept="image/*" capture="environment" style="display:none">
+    <input type="text" id="input" placeholder="Message" autocomplete="off" enterkeyhint="send">
+    <button class="send-btn" onclick="send()" id="sendBtn">&#9654;</button>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+// ── Config ──
+const API = '/api/privchat';
+const PIN_KEY = 'privchat_pin';
+let loading = false, pollTimer = null, mediaRec = null, recChunks = [];
+
+function q(s){return document.getElementById(s)}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+// ── Auth ──
+function getPin(){return localStorage.getItem(PIN_KEY)}
+function setPin(p){localStorage.setItem(PIN_KEY,p)}
+
+async function unlock(){
+  const pin=q('pin').value.trim();
+  if(!pin||pin.length<4)return;
+  q('lockErr').textContent='';
+  setPin(pin);
+  if(await loadMsgs()){
+    q('lock').classList.add('hidden');
+    q('chat').classList.add('active');
+    q('input').focus();
+    startPoll();
+  }else{
+    localStorage.removeItem(PIN_KEY);
+    q('lockErr').textContent='Wrong PIN';
+  }
+}
+
+(async()=>{
+  const up=new URLSearchParams(location.search).get('pin');
+  if(up){setPin(up);history.replaceState(null,'','/chat/')}
+  if(getPin()){q('pin').value=getPin();if(await loadMsgs()){q('lock').classList.add('hidden');q('chat').classList.add('active');q('input').focus();startPoll()}}
+})();
+
+function exitChat(){/* back to Naledi Star main */window.location.href='/'}
+
+// ── API ──
+function hdrs(){const h={'Content-Type':'application/json'};const p=getPin();if(p)h['X-Auth-Token']=p;return h}
+async function api(path,body){
+  const r=await fetch(API+path,{method:body?'POST':'GET',headers:hdrs(),body:body?JSON.stringify(body):undefined});
+  if(r.status===401)return null;return r.json()
+}
+
+// ── Messages ──
+async function loadMsgs(){
+  const d=await api('/messages');
+  if(!d)return false;
+  renderMsgs(d.messages);return true
+}
+
+function renderMsgs(msgs){
+  const c=q('msgs');c.innerHTML='';
+  for(const m of msgs)renderMsg(m);
+  scrollBtm()
+}
+
+function renderMsg(m){
+  const c=q('msgs');
+  const div=document.createElement('div');
+  const isMe=m.sender==='Graham';
+  div.className='msg '+(isMe?'me':'them');
+  let html='';
+  if(!isMe)html+='<div class="sn">'+esc(m.sender)+'</div>';
+  if(m.msg_type==='image'&&m.media_key){
+    html+='<img src="'+API+'/media/'+encodeURIComponent(m.media_key)+'" loading="lazy" onclick="window.open(this.src)">';
+  }else if(m.msg_type==='voice'&&m.media_key){
+    html+='<div class="voice-badge" onclick="playVoice(this,\''+API+'/media/'+encodeURIComponent(m.media_key)+'\')">&#9654; Voice note'+(m.media_duration?' <span class="tm">'+(Math.round(m.media_duration))+'s</span>':'')+'</div>';
+    html+='<audio src="'+API+'/media/'+encodeURIComponent(m.media_key)+'" preload="none"></audio>';
+  }
+  if(m.text)html+=esc(m.text);
+  html+='<div class="tm">'+fmtTime(m.created_at);
+  if(isMe&&m.text&&m.msg_type==='text')html+=' <button class="tts-btn" onclick="playTTS(\''+esc(m.text).replace(/'/g,"\\'")+'\')">&#9654;</button>';
+  html+='</div>';
+  div.innerHTML=html;
+  c.appendChild(div);
+  scrollBtm()
+}
+
+function scrollBtm(){requestAnimationFrame(()=>{q('msgs').scrollTop=q('msgs').scrollHeight})}
+
+function fmtTime(iso){
+  if(!iso)return '';
+  const d=new Date(iso);
+  return d.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit',timeZone:'Africa/Johannesburg'})
+}
+
+// ── Send ──
+q('input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
+
+async function send(text){
+  const input=q('input');
+  const msg=(text||input.value).trim();
+  if(!msg||loading)return;
+  if(!text)input.value='';
+  loading=true;
+  renderMsg({sender:'Graham',text:msg,msg_type:'text',created_at:new Date().toISOString()});
+  await api('/messages',{message:msg});
+  loading=false;
+  q('input').focus()
+}
+
+// ── Voice recording ──
+async function record(){
+  if(mediaRec&&mediaRec.state==='recording'){stopRec();return}
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRec=new MediaRecorder(s,{mimeType:'audio/webm;codecs=opus'});
+    recChunks=[];
+    mediaRec.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data)};
+    mediaRec.onstop=async()=>{
+      s.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(recChunks,{type:'audio/webm'});
+      q('voiceBtn').textContent='&#127908;';
+      toast('Transcribing...');
+      const key=await uploadBlob(blob,'webm');
+      if(!key){toast('Upload failed');return}
+      const txt=await transcribe(key);
+      if(txt&&txt.text){
+        renderMsg({sender:'Graham',text:txt.text,msg_type:'voice',media_key:key,media_duration:Math.round(blob.size/16000),created_at:new Date().toISOString()});
+        await api('/messages',{message:txt.text,msg_type:'voice',media_key:key,media_duration:Math.round(blob.size/16000)});
+      }else{
+        renderMsg({sender:'Graham',text:'[Voice note]',msg_type:'voice',media_key:key,media_duration:Math.round(blob.size/16000),created_at:new Date().toISOString()});
+        await api('/messages',{message:'[Voice note]',msg_type:'voice',media_key:key,media_duration:Math.round(blob.size/16000)});
+      }
+      loading=false;
+      toast('')
+    };
+    mediaRec.start();
+    q('voiceBtn').textContent='&#9632;';
+    toast('Recording... tap mic again to stop');
+  }catch(e){toast('Mic access denied')}
+}
+
+function stopRec(){
+  if(mediaRec)mediaRec.stop()
+}
+
+// ── Camera / Gallery ──
+function attach(){
+  const input=document.createElement('input');
+  input.type='file';
+  input.accept='image/*';
+  input.multiple=true;
+  input.onchange=async()=>{
+    for(const f of input.files){
+      toast('Uploading...');
+      const key=await uploadFile(f);
+      if(!key){toast('Upload failed');continue}
+      renderMsg({sender:'Graham',text:'',msg_type:'image',media_key:key,created_at:new Date().toISOString()});
+      await api('/messages',{message:'',msg_type:'image',media_key:key});
+    }
+    toast('')
+  };
+  input.click()
+}
+
+// ── Upload helpers ──
+async function uploadBlob(blob,ext){
+  const fd=new FormData();
+  fd.append('file',blob,'voice.'+ext);
+  try{
+    const r=await fetch(API+'/upload',{method:'POST',headers:{'X-Auth-Token':getPin()||''},body:fd});
+    const d=await r.json();
+    return d.key||null
+  }catch{return null}
+}
+
+async function uploadFile(file){
+  return uploadBlob(file,file.name.split('.').pop()||'jpg')
+}
+
+async function transcribe(key){
+  try{
+    const r=await fetch(API+'/media/'+encodeURIComponent(key));
+    const blob=await r.blob();
+    const buf=await blob.arrayBuffer();
+    const b64=arrayBufferToBase64(buf);
+    const tr=await fetch('/api/transcribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({audio:b64,mimetype:blob.type})});
+    return await tr.json()
+  }catch{return null}
+}
+
+function arrayBufferToBase64(buf){
+  const bytes=new Uint8Array(buf);
+  let bin='';
+  for(const b of bytes)bin+=String.fromCharCode(b);
+  return btoa(bin)
+}
+
+// ── Voice playback ──
+function playVoice(el,url){
+  const audio=el.nextElementSibling;
+  if(!audio)return;
+  if(audio.paused){audio.play();el.innerHTML='&#9646; Playing...'}
+  else{audio.pause();audio.currentTime=0;el.innerHTML='&#9654; Voice note'}
+  audio.onended=()=>{el.innerHTML='&#9654; Voice note'};
+  audio.onerror=()=>{el.innerHTML='&#9654; Voice note (error)'}
+}
+
+// ── TTS ──
+async function playTTS(text){
+  try{
+    const r=await fetch(API+'/tts',{method:'POST',headers:hdrs(),body:JSON.stringify({text})});
+    const d=await r.json();
+    if(!d.audio)return;
+    const audio=new Audio('data:audio/mpeg;base64,'+d.audio);
+    audio.play()
+  }catch{toast('TTS failed')}
+}
+
+// ── Polling ──
+function startPoll(){
+  if(pollTimer)clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    const d=await api('/messages');
+    if(!d||!d.messages)return;
+    const c=q('msgs');
+    const n=d.messages.length;
+    if(n>c.children.length){
+      renderMsgs(d.messages);
+      scrollBtm()
+    }
+  },3000)
+}
+
+// ── Toast ──
+function toast(msg){
+  const el=q('toast');
+  el.textContent=msg;
+  el.classList.toggle('show',!!msg);
+  if(msg)setTimeout(()=>el.classList.remove('show'),2500)
+}
+</script>
+</body>
+</html>

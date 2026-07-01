@@ -1,0 +1,88 @@
+import { Hono } from 'hono';
+import puppeteer from '@cloudflare/puppeteer';
+import { DurableObject } from "cloudflare:workers";
+
+type Bindings = {
+  DB: D1Database;
+  AI: any;
+  MYBROWSER: Browser;
+  R2_BUCKET: R2Bucket;
+  BROWSER_DO: DurableObjectNamespace;
+};
+
+// 1. Define and export the Durable Object class that Wrangler expects
+export class BrowserSession extends DurableObject {
+  constructor(ctx: DurableObjectState, env: Bindings) {
+    super(ctx, env);
+  }
+}
+
+const app = new Hono<{ Bindings: Bindings }>();
+
+// Browser automation endpoint
+app.get('/browser/start', async (c) => {
+  const browser = await puppeteer.launch(c.env.MYBROWSER);
+  const page = await browser.newPage();
+  
+  // Restore WhatsApp session from R2
+  const sessionData = await c.env.R2_BUCKET.get('whatsapp-session.json');
+  if (sessionData) {
+    const cookies = JSON.parse(await sessionData.text());
+    await page.setCookie(...cookies);
+  }
+  
+  await page.goto('https://web.whatsapp.com', { waitUntil: 'networkidle2' });
+  
+  // Expose message handler to browser context
+  await page.exposeFunction('onMessage', async (message: any) => {
+    // Handle incoming WhatsApp message
+    console.log('Message received:', message);
+    // You can send to your API or process here
+  });
+  
+  // Inject message listener
+  await page.evaluateOnNewDocument(() => {
+    // This runs in browser context - listen for WhatsApp messages
+    const observer = new MutationObserver(() => {
+      const messages = document.querySelectorAll('[data-testid="msg-container"]');
+      messages.forEach(msg => {
+        if (!msg.dataset.processed) {
+          msg.dataset.processed = 'true';
+          // @ts-ignore - exposed function
+          window.onMessage({
+            text: msg.innerText,
+            timestamp: Date.now()
+          });
+        }
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+  
+  return c.json({ 
+    status: 'browser_active', 
+    message: 'WhatsApp Web loaded. Session restored from R2 if available.' 
+  });
+});
+
+// Save session to R2 periodically
+app.post('/browser/save-session', async (c) => {
+  const browser = await puppeteer.launch(c.env.MYBROWSER);
+  const pages = await browser.pages();
+  const page = pages[0];
+  
+  const cookies = await page.cookies();
+  await c.env.R2_BUCKET.put('whatsapp-session.json', JSON.stringify(cookies));
+  
+  return c.json({ status: 'session_saved' });
+});
+
+// Existing API endpoint
+app.post('/api/incoming', async (c) => {
+  const { from, body } = await c.req.json();
+  // ... your existing logic
+  return c.json({ success: true });
+});
+
+// 2. Export the Hono app instance as default
+export default app;

@@ -1,0 +1,67 @@
+{
+  "name": "helpme-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "pwa",
+    "binding": "ASSETS"
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "user_db",
+      "database_id": "21b48bee-f725-4467-a20a-60627bbeacc6"
+    },
+    {
+      "binding": "NALEDI_DB",
+      "database_name": "naledi-chat-db",
+      "database_id": "dada1205-e998-461f-8e92-7346c9e2fd3d"
+    },
+    {
+      "binding": "KARAOKE_DB",
+      "database_name": "supatraxx_karaoke_db",
+      "database_id": "58be4e00-fcc2-4a05-843c-3f7870868210"
+    },
+    {
+      "binding": "MEMORY_DB",
+      "database_name": "ai-memory-db",
+      "database_id": "16bbabc3-ec29-40b4-8617-6bebeca2ab14"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "whatsapp-sessions"
+    },
+    {
+      "binding": "DOCS",
+      "bucket_name": "naledi-docs"
+    }
+  ],
+  "services": [
+    {
+      "binding": "SELF",
+      "service": "helpme-api"
+    }
+  ],
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "nwa.oriondevcore.com",
+      "custom_domain": true
+    }
+  ],
+  "triggers": {
+    "crons": ["0 6 * * *"]
+  },
+  "vars": {
+    "PAYFAST_SANDBOX": "false"
+  }
+}

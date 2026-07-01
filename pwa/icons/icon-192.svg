@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="32" fill="#080809"/>
+  <circle cx="96" cy="96" r="48" fill="none" stroke="#00e5ff" stroke-width="8"/>
+  <text x="96" y="116" font-family="Inter,sans-serif" font-size="60" font-weight="800" text-anchor="middle" fill="#00e5ff">OV</text>
+</svg>
