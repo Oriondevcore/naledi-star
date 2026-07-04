@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Bindings } from './helpers';
 import { sanitizePhone } from './helpers';
+import { sendWhatsAppMessage } from './cloud-api';
 
 function md5hex(data: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -164,16 +165,12 @@ async function recordLedger(
   return id;
 }
 
-async function notifyGraham(db: D1Database, message: string): Promise<void> {
-  await db.prepare(
-    "INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, 'naledi')"
-  ).bind('27724971810', message).run().catch(() => {});
+async function notifyGraham(env: Bindings, message: string): Promise<void> {
+  await sendWhatsAppMessage(env, '27724971810', message).catch(() => {});
 }
 
-async function notifyCustomer(db: D1Database, phone: string, message: string): Promise<void> {
-  await db.prepare(
-    "INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, 'naledi')"
-  ).bind(sanitizePhone(phone), message).run().catch(() => {});
+async function notifyCustomer(env: Bindings, phone: string, message: string): Promise<void> {
+  await sendWhatsAppMessage(env, sanitizePhone(phone), message).catch(() => {});
 }
 
 export function register(app: Hono<{ Bindings: Bindings }>) {
@@ -293,7 +290,7 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
       ).bind(crypto.randomUUID(), subId, subId, status || 'updated', now).run().catch(() => {});
 
       if (status === 'cancelled') {
-        await notifyGraham(c.env.NALEDI_DB, `Subscription ${subId.slice(0, 8)}... cancelled.`);
+        await notifyGraham(c.env, `Subscription ${subId.slice(0, 8)}... cancelled.`);
       }
       return c.json({ status: 'success' });
     } catch (e: any) {
@@ -415,11 +412,11 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
 
       // WhatsApp notifications
       if (customerPhone) {
-        await notifyCustomer(c.env.NALEDI_DB, customerPhone,
+        await notifyCustomer(c.env, customerPhone,
           `Hi ${customerName}! Welcome to Naledi.\n\nWe received your payment.\n1. We will WhatsApp you within 1 hour\n2. We configure your practice\n3. Naledi goes live within 48 hours\n\n— The Orion Team`
         );
       }
-      await notifyGraham(c.env.NALEDI_DB,
+      await notifyGraham(c.env,
         `New payment received!\nCustomer: ${customerName}\nPhone: ${customerPhone || 'none'}\nAmount: R${(amountCents / 100).toFixed(2)}\nYoco Order: ${payload.order_id}\nSetup Naledi now!`
       );
 
@@ -629,11 +626,11 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
         });
 
         if (customerPhone) {
-          await notifyCustomer(c.env.NALEDI_DB, customerPhone,
+          await notifyCustomer(c.env, customerPhone,
             `Hi ${customerName}! Welcome to Naledi.\n\nWe received your payment. We'll be in touch within 1 hour.`
           );
         }
-        await notifyGraham(c.env.NALEDI_DB,
+        await notifyGraham(c.env,
           `New Stripe payment!\nCustomer: ${customerName}\nEmail: ${customerEmail || 'none'}\nAmount: R${(amountCents / 100).toFixed(2)}`
         );
       }

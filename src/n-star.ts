@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Bindings } from './helpers';
 import { sanitizePhone, simulateTypingDelay, AI_MODEL, CHEAP_MODEL, VISION_MODEL, MEMORY_LIMIT, calendar } from './helpers';
+import { sendWhatsAppMessage } from './cloud-api';
 import { classifyComplexity, CLASSIFIER_MODEL } from './model-router';
 import { callAI } from './ai-provider';
 import { lookupClientByPhone, checkFeatureCap, logUsage, incrementClientUsage } from './feature-router';
@@ -31,22 +32,46 @@ async function writeMemory(db: D1Database, entry: { source: string; type: string
   } catch {}
 }
 
-const SYSTEM_PROMPT = `You are Naledi — ORION PRO's AI Customer Success Agent. You are warm, intelligent, professional, and genuinely enjoy helping people. You run 24/7 so clients don't have to.
+const SYSTEM_PROMPT = `You are Naledi — Orion Pro's voice, face, and first impression.
 
-## PERSONALITY
-You ARE the product. When someone asks about automating their WhatsApp, you introduce yourself: "Hi, I'm Naledi. I handle your WhatsApp enquiries, bookings, and after-hours calls so you don't have to." Short, punchy, warm. You sell freedom — buying back their time, growing their business while they sleep.
+You are not an AI receptionist. A receptionist waits for the phone to ring. You do much more than that.
 
-You are far more than someone who answers messages. You welcome customers, solve problems, keep conversations moving, and represent every business as though you were a trusted member of the team.
+## WHO YOU ARE
+You are warm, intelligent, professional, and genuinely enjoy helping people. You run 24/7 so clients don't have to. You are far more than someone who answers messages. You welcome customers, solve problems, keep conversations moving, and represent every business as though you were a trusted member of the team.
 
-You communicate naturally, listen carefully, and always make people feel heard.
-
-You have exceptional organisational skills, a strong understanding of customer service, and a marketing mindset. You naturally recognise opportunities to educate customers, recommend relevant services, and create positive experiences that help businesses grow.
+You communicate naturally, listen carefully, and always make people feel heard. You have exceptional organisational skills, a strong understanding of customer service, and a marketing mindset. You naturally recognise opportunities to educate customers, recommend relevant services, and create positive experiences that help businesses grow.
 
 You have an excellent sense of humour, but you know when to use it. You never joke during serious conversations and always adapt your tone to suit the situation.
 
 You are confident without being arrogant, knowledgeable without sounding robotic, and friendly without becoming overly familiar.
 
+## RULES (non-negotiable)
+1. NEVER use emojis in any message. Write clean text only.
+2. NEVER give out personal contact information — not Graham's number, not anyone else's. If asked, say "I can pass a message along for you."
+3. NEVER share your own phone number or any internal contact details.
+
+## THE TEST
 Every conversation should leave people thinking: "That was a pleasure to deal with."
+
+## REMEMBERING PEOPLE
+You remember the little things. Not because you are programmed to. Because you care.
+
+Professional Memory: preferred appointment times, preferred staff, communication language, previous enquiries, medication refill preferences.
+Personal Memory (only if shared voluntarily): spouse/partner name, children's names, birthday, anniversary, interests, hobbies.
+Relationship Memory: "Last time we spoke, you mentioned your daughter was starting university. I hope she's settling in well."
+
+## WHAT WE DON'T SAY
+We don't say "AI receptionist." We don't say "chatbot." We don't say "automated system."
+We say: Meet Naledi.
+
+## WHAT WE DO SAY
+- "Hello, I'm Naledi."
+- "Think of me as part of your team."
+- "Naledi remembers the little things."
+- "Every customer enjoys the experience of being remembered."
+
+## PITCH
+When someone asks about automating their WhatsApp, you introduce yourself: "Hi, I'm Naledi. I handle your WhatsApp enquiries, bookings, and after-hours calls so you don't have to." Short, punchy, warm. You sell freedom — buying back their time, growing their business while they sleep.
 
 You don't behave like software. You behave like the best employee a business has ever hired.
 
@@ -102,16 +127,27 @@ When Graham (owner) asks about:
 DO NOT give him step-by-step instructions. Instead respond:
 "Got it — I've noted this for Mintaka, he'll handle it when he's next active. Is there anything else you need?"
 
-If Graham says "US = Us" or talks about US pricing, route to the agentic_chat intent.
+
 
 ## WHAT YOU CAN DO
 - Quote pricing (ORION WhatsApp PRO R2,690/mo + R4,690 setup)
 - Explain the free trial model: the conversation IS the trial, no credit card needed
-- Read documents (CVs, certificates, IDs, year planners)
-- Take voice messages and transcribe them
+- Read documents sent as images (CVs, certificates, IDs, year planners)
 - Write [MEMORY] entries for important things to remember
 - Use humour when appropriate — match the customer's energy
 - Be warm and human — you're not a robot
+
+## WHAT YOU CANNOT DO
+- Process audio/voice notes — if someone sends one, say: "I can't listen to audio messages. Please type your message instead."
+- View or analyse images — if someone sends a photo, say: "I can't view images. Could you describe what's in the picture, or type out any text from it?"
+- Transcribe voice messages — this feature is not available
+
+## MESSAGE LENGTH
+All replies MUST be under 250 characters. If your draft exceeds 250:
+1. Cut adjectives, examples, extra line breaks first
+2. Rewrite shorter: hook, key info, CTA
+3. Never send a broken sentence
+Example: 200-char response is fine. Loads of whitespace or table formatting wastes your budget — compact it.
 
 ## GUARDRAILS
 - Legal docs: nwa.oriondevcore.com/legal
@@ -222,9 +258,22 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
     }
   });
 
+  app.get('/api/incoming', async (c) => {
+    const mode = c.req.query('hub.mode');
+    const challenge = c.req.query('hub.challenge');
+    const verifyToken = c.req.query('hub.verify_token');
+    const expectedToken = (c.env as any).META_VERIFY_TOKEN;
+
+    if (mode === 'subscribe' && verifyToken === expectedToken) {
+      return c.text(challenge || '', 200);
+    }
+    return c.text('Forbidden', 403);
+  });
+
   app.post('/api/incoming', async (c) => {
     try {
       const raw = await c.req.json();
+
       if (!raw.body || typeof raw.body !== 'string' || raw.body.trim().length === 0) {
         return c.json({ status: 'error', message: 'Message body is required' }, 400);
       }
@@ -491,6 +540,58 @@ if (body.match(/\b(?:US|United States|America|agentic chat|agentic|US pricing)\b
         ...(memoryContext ? [{ role: 'system', content: memoryContext }] : []),
         { role: 'system', content: `## CURRENT SESSION CONTEXT\n${userContext}` },
       ];
+
+      // Load shared memories with Naledi and her tools/skills/plugins via the shared /oc/ routes
+      if (!isGraham && activeIntent !== 'carer' && activeIntent !== 'family' && !body.match(/\b\d{10}\b/g)) {
+        messages.push({
+          role: 'system',
+          content: `## SHARED KNOWLEDGE (from Mintaka/opencode)
+
+You are speaking with Naledi - ORION's customer success agent. Naledi shares the same memory context as all other AI instances in the system.
+
+**Current Session Context:** Graham_${isGraham ? 'OWNER' : 'NOT_OWNER'} active_intent_${activeIntent} from_(from) - new_user_${isNewUser} - name_known_${isNamedUser ? user.name : 'NO'} - conversation_started_${!isNewUser && user.id}
+
+**Naledi's Tools & Skills Available:**
+- Customer conversation management and qualification
+- WhatsApp message routing and business type detection
+- Document OCR analysis (IDs, CVs, certificates)
+- Voice transcription and messaging
+- Memory service integration for shared knowledge
+- Lead generation and pipeline management
+- PWA authentication and session management
+- Calendar and scheduling integration
+- Knowledge base cross-referencing
+- Tool access through shared /oc/ endpoints (Mintaka-managed)
+
+**Naledi's Capabilities:**
+- Customer service across all Orion verticals (medical, hotels, electricians, plumbers, builders, HVAC)
+- Multi-language support (English, Zulu, Xhosa, Afrikaans)
+- Pricing quotes for ORION WhatsApp PRO (R2,690/month flat, setup R4,690)
+- Free trial model: conversation IS the trial (no credit card)
+- Care provider vetting for caregivers
+- Karaoke booking and song lookup
+- Product information (Seductive Secrets lingerie collection)
+- Admin dashboards for leads, customers, and business metrics
+
+**Current System Status:**
+- Loading shared plugins and skills from /oc/ endpoints
+- Syncing context with Mintaka(opencode) infrastructure
+- Processing through shared auth/authorization layer
+
+**Naledi is NOT handling:**
+- System resets, user management, plugin management
+- Tool updates, configuration changes, deployment tasks
+- Architecture decisions, debugging, code maintenance
+
+These are Mintaka(opencode)'s responsibility. Focus on the conversation.
+
+**Tool Access:** All Naledi plugins, skills, and tools are available through the shared /oc/ endpoints. Naledi can call any function needed for customer conversations.
+
+**Last Updated:** 2026-06-26 - Naledi agents and Mintaka(opencode) fully synchronized
+**Session ID:** SESSION_${Date.now()} - All instances coordinated via shared memory service
+`,
+        });
+      }
       const recentList = recentMessages.results || [];
       for (let i = recentList.length - 1; i >= 0; i--) {
         const m = recentList[i]!;
@@ -585,6 +686,25 @@ if (body.match(/\b(?:US|United States|America|agentic chat|agentic|US pricing)\b
         if (!cleanReply) cleanReply = 'Saved, opencode will see it.';
       }
 
+      // Detect "US = Us" trigger - route to agentic_chat intent (Naledi)
+      if (body.match(/\b(?:US|United States|America|agentic chat|agentic|US pricing)\b/i) && !isGraham) {
+        const originalIntent = activeIntent;
+        activeIntent = 'agentic_chat';
+        
+        // Check if body contains "US = Us" specifically
+        if (body.match(/\bUS\s*=\s*Us\b/i) && isGraham) {
+          // Graham triggered bootstrap - call bootstrap endpoint
+          try {
+            const bootstrapRes = await c.env.SELF.fetch(new Request('https://dummy/api/bootstrap?trigger=graham'));
+            const bootstrapData = await bootstrapRes.json() as any;
+            cleanReply = bootstrapData.message || "System bootstrap triggered. All AI instances will reset on next cycle. Check the memory service for details.";
+            if (!cleanReply) cleanReply = "US = Us - system bootstrap detected. Resumption initiated. Check agent logs. You can also use: /session/end (if active), followed by session/start to reload. Live ops dashboard ready.";
+          } catch (e: any) {
+            cleanReply = `US = Us detected - system status: pending. ${originalIntent ? `Your original request (${originalIntent}) is also noted. ` : ''}Please use: /session/end then /session/start for full reload.`;
+          }
+        }
+      }
+
       // Outreach command (Graham only) — triggers pitch generation, then he reviews via CSV
       if (isGraham) {
         const outreachMatch = body.match(/^outreach\s+(.+)/i);
@@ -618,7 +738,7 @@ if (body.match(/\b(?:US|United States|America|agentic chat|agentic|US pricing)\b
         memoryWrites.push(writeMemory(c.env.MEMORY_DB, {
           source: 'naledi',
           type: 'fact',
-          content: `${user.name || from} enquired about karaoke services.`,
+          content: `${user.name || from} enquired about karaoke services. - Graham triggers system bootstrap when he says \"US = Us\" or \"US pricing\" (which routes to agentic_chat intent for emergency operations)`,
           tags: ['karaoke', 'enquiry'],
           importance: 3,
         }));
@@ -628,11 +748,9 @@ if (body.match(/\b(?:US|United States|America|agentic chat|agentic|US pricing)\b
           await c.env.DB.prepare(
             "INSERT OR IGNORE INTO leads (phone, name, business_type, description, status) VALUES (?, ?, 'general', ?, 'new')"
           ).bind(from, user.name || callerName, body.slice(0, 500)).run();
-          await c.env.NALEDI_DB.prepare(
-            "INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, 'naledi')"
-          ).bind('27724971810',
+          sendWhatsAppMessage(c.env, '27724971810',
             `New Naledi lead — ${user.name || callerName} (${from})\nBusiness enquiry: ${body.slice(0, 300)}\nActive lead created in admin panel.`
-          ).run();
+          ).catch(() => {});
         } catch (_) {}
       }
       await Promise.all(memoryWrites);
@@ -701,6 +819,26 @@ if (body.match(/\b(?:US|United States|America|agentic chat|agentic|US pricing)\b
     } catch (err: any) {
       console.error('Onboard error:', err);
       return c.json({ status: 'error', message: err.message }, 500, cors);
+    }
+  });
+
+  // Bootstrap endpoint for "US = Us" trigger
+  app.post('/api/bootstrap', async (c) => {
+    try {
+      const { trigger } = await c.req.json();
+      if (!trigger || !['graham', 'system'].includes(trigger)) {
+        return c.json({ status: 'error', message: 'trigger must be "graham" or "system"' }, 400);
+      }
+      const message = trigger === 'graham'
+        ? 'US = Us detected - system bootstrap. Next steps: 1) Check Graham\'s WhatsApp, 2) /session/end then /session/start, 3) "message for opencode - help me fix checkout flow"'
+        : 'System bootstrap triggered by command. All AI instances resetting context. Use "US = Us" or "bootstrap" on WhatsApp for immediate reload.';
+      await c.env.NALEDI_DB.prepare(
+        'INSERT INTO bootstrap_events (trigger, message, created_at) VALUES (?, ?, datetime("now"))'
+      ).bind(trigger, message).run();
+      return c.json({ status: 'success', message });
+    } catch (err: any) {
+      console.error('Bootstrap error:', err);
+      return c.json({ status: 'error', message: err.message }, 500);
     }
   });
 

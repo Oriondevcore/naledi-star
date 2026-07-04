@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Bindings } from './helpers';
 import { sanitizePhone } from './helpers';
+import { sendWhatsAppMessage } from './cloud-api';
 
 export const DAILY_LIMIT = 25;
 const BIZ_START = 8;
@@ -185,10 +186,7 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
       const phone = sanitizePhone(lead.phone);
       if (!phone || phone.length < 9) return c.json({ error: 'Invalid phone number' }, 400);
 
-      const msgSender = lead.notes === 'zulu' || lead.notes === 'afrikaans' ? 'cellc' : 'naledi';
-      await c.env.NALEDI_DB.prepare(
-        'INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, ?)'
-      ).bind(phone, message, msgSender).run();
+      await sendWhatsAppMessage(c.env, phone, message).catch(() => {});
 
       await c.env.NALEDI_DB.prepare(
         "UPDATE outreach_leads SET status = 'contacted', last_contacted_at = CURRENT_TIMESTAMP, notes = ? WHERE id = ?"
@@ -306,10 +304,7 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
         const phone = sanitizePhone(lead.phone);
         if (!phone || phone.length < 9) { skipped++; continue; }
 
-        const msgSender = sender || (lead.notes === 'zulu' || lead.notes === 'afrikaans' ? 'cellc' : 'naledi');
-        await c.env.NALEDI_DB.prepare(
-          'INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, ?)'
-        ).bind(phone, lead.pitch, msgSender).run();
+        await sendWhatsAppMessage(c.env, phone, lead.pitch).catch(() => {});
 
         await c.env.NALEDI_DB.prepare(
           "UPDATE outreach_leads SET status = 'contacted', last_contacted_at = CURRENT_TIMESTAMP WHERE id = ?"

@@ -4,10 +4,10 @@ const SILICONFLOW_MODELS: Record<string, string> = {
   'glm-4.6v-flash': 'THUDM/glm-4v-9b',
 };
 const CF_MODELS: Record<string, string> = {
-  'gpt-oss-20b': '@cf/openai/gpt-oss-20b',
+  'gpt-oss-20b': '@cf/moonshotai/kimi-k2.6',
   'glm-4.6v-flash': '@cf/meta/llama-4-scout-17b-16e-instruct',
 };
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 30000;
 
 interface AIOptions {
   messages?: any[];
@@ -101,7 +101,11 @@ export async function callAI(
   model: string,
   options: AIOptions,
 ): Promise<AIResponse> {
-  const result = await callSiliconFlow(env, model, options);
-  if (result) return result;
-  return callCF(env, model, options);
+  try {
+    return await callCF(env, model, options);
+  } catch {
+    const result = await callSiliconFlow(env, model, options);
+    if (result) return result;
+    throw new Error('All AI providers failed');
+  }
 }

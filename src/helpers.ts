@@ -24,11 +24,13 @@ export type Bindings = {
   STRIPE_WEBHOOK_SECRET?: string;
   BILLING_CRON_KEY?: string;
   PAYFAST_SANDBOX?: string;
+  ADMIN_AUTH_CODE?: string;
 };
 
 export type Env = Bindings & {
   GRAHAM_NUMBER?: string;
   SILICONFLOW_API_KEY?: string;
+  ADMIN_AUTH_CODE?: string;
 };
 
 export const AI_MODEL = 'gpt-oss-20b';

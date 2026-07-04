@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Bindings } from './helpers';
+import { sendWhatsAppMessage } from './cloud-api';
 import { sanitizePhone } from './helpers';
 import { getAllClients, getGlobalUsageSummary, getClientUsageStats, setFeature, addTransaction } from './feature-router';
 
@@ -171,7 +172,8 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
       'SELECT phone, is_active FROM pwa_tokens WHERE token = ? AND role = ?'
     ).bind(adminToken, 'admin').first<{ phone: string; is_active: number }>();
     const grahamNumber = (c.env as any).GRAHAM_NUMBER || '';
-    const isAuthorized = admin?.is_active || (adminToken === 'graham' && grahamNumber.length > 0);
+    const adminCode = (c.env as any).ADMIN_AUTH_CODE || '';
+    const isAuthorized = admin?.is_active || (adminToken === adminCode && grahamNumber.length > 0);
     if (!isAuthorized) return c.json({ error: 'Unauthorized' }, 403);
     if (!phone || !name || !role) return c.json({ error: 'phone, name, role required' }, 400);
     const newToken = crypto.randomUUID().replace(/-/g, '').slice(0, 20);
@@ -187,7 +189,8 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
     const admin = await c.env.NALEDI_DB.prepare(
       'SELECT is_active FROM pwa_tokens WHERE token = ? AND role = ?'
     ).bind(adminToken, 'admin').first<{ is_active: number }>();
-    if (!admin?.is_active && adminToken !== 'graham') return c.json({ error: 'Unauthorized' }, 403);
+    const revokeAdminCode = (c.env as any).ADMIN_AUTH_CODE || '';
+    if (!admin?.is_active && adminToken !== revokeAdminCode) return c.json({ error: 'Unauthorized' }, 403);
     await c.env.NALEDI_DB.prepare('UPDATE pwa_tokens SET is_active = 0 WHERE token = ?').bind(target).run();
     return c.json({ status: 'success' });
   });
@@ -2333,11 +2336,19 @@ function escapeHtml(str) {
 
         const contactName = value?.contacts?.[0]?.profile?.name || 'Unknown';
 
-        await c.env.SELF.fetch('http://dummy/api/incoming', {
+        const resp = await c.env.SELF.fetch('http://dummy/api/incoming', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ from, body, name: contactName }),
         });
+
+        const data = await resp.json() as any;
+        if (data?.reply) {
+          const result = await sendWhatsAppMessage(c.env as any, from, data.reply);
+          if (!result.success) {
+            console.error('sendWhatsAppMessage failed:', result.error);
+          }
+        }
       }
 
       return c.json({ status: 'ok' });
@@ -2401,4 +2412,5 @@ function escapeHtml(str) {
       return c.json({ success: false, error: e?.message || 'generation failed' }, 200);
     }
   });
+
 }

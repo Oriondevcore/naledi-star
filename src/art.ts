@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Bindings } from './helpers';
 import { sanitizePhone } from './helpers';
 import { sendOrderConfirmation, sendGrahamNotification } from './email';
-import { sendWhatsAppMessage, processOutbox } from './cloud-api';
+import { sendWhatsAppMessage } from './cloud-api';
 
 export function register(app: Hono<{ Bindings: Bindings }>) {
   app.post('/api/orders', async (c) => {
@@ -36,9 +36,7 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
       if (customerPhone && (product || '').toLowerCase().includes('naledi')) {
         const phone = sanitizePhone(customerPhone);
         // Welcome message to the buyer
-        await c.env.NALEDI_DB.prepare(
-          "INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, 'naledi')"
-        ).bind(phone,
+        sendWhatsAppMessage(c.env, phone,
           'Hi ' + customerName + '! Welcome to Naledi 🎉\n\n' +
           'We got your payment. Here is what happens next:\n' +
           '1. We will WhatsApp you within 2 hours to schedule your setup call\n' +
@@ -46,21 +44,19 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
           '3. We train Naledi on your business and get you live\n\n' +
           'Need help now? Reply to this message or ask on WhatsApp.\n' +
           '— The Orion Team'
-        ).run().catch(() => {});
+        ).catch(() => {});
       }
 
       // Always notify Graham
       if (customerPhone) {
-        await c.env.NALEDI_DB.prepare(
-          "INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, 'naledi')"
-        ).bind('27724971810',
+        sendWhatsAppMessage(c.env, '27724971810',
           'New Naledi order: ' + product + '\n' +
           'Customer: ' + customerName + ' (' + customerEmail + ')\n' +
           'Phone: ' + customerPhone + '\n' +
           'Amount: R' + (amountInCents / 100).toFixed(2) + '\n' +
           'Order: ' + (orderNumber || 'N/A') + '\n' +
           'Setup within 1-3 business days!'
-        ).run().catch(() => {});
+        ).catch(() => {});
       }
 
       // Send email confirmation (non-blocking)
@@ -130,29 +126,14 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
 
   app.post('/api/send', async (c) => {
     try {
-      const { to, message, sender } = await c.req.json();
+      const { to, message } = await c.req.json();
       if (!to || !message) return c.json({ error: 'to and message required' }, 400);
 
-      // Try Cloud API first
-      const apiResult = await sendWhatsAppMessage(c.env, to, message);
-      if (apiResult.success) {
+      const result = await sendWhatsAppMessage(c.env, to, message);
+      if (result.success) {
         return c.json({ status: 'sent', provider: 'cloud-api' });
       }
-
-      // Fallback to queue for Puppeteer daemon
-      const result = await c.env.NALEDI_DB.prepare(
-        'INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, ?) RETURNING id'
-      ).bind(to, message, sender || 'naledi').first<{ id: number }>();
-      return c.json({ status: 'queued', id: result?.id, fallback: true });
-    } catch (e: any) {
-      return c.json({ error: e.message }, 500);
-    }
-  });
-
-  app.post('/api/outbox/process', async (c) => {
-    try {
-      const result = await processOutbox(c.env);
-      return c.json(result);
+      return c.json({ status: 'error', error: result.error }, 200);
     } catch (e: any) {
       return c.json({ error: e.message }, 500);
     }
@@ -206,11 +187,9 @@ document.getElementById('uploadForm').onsubmit = async function(e) {
         customMetadata: { businessName: name, phone, originalName: file.name }
       });
 
-      await c.env.NALEDI_DB.prepare(
-        "INSERT INTO outbox_messages (recipient, message, sender) VALUES (?, ?, 'naledi')"
-      ).bind('27724971810',
+      sendWhatsAppMessage(c.env, '27724971810',
         '📄 Docs uploaded by ' + name + ' (' + phone + ')\nFile: ' + file.name + '\nSize: ' + (file.size / 1024).toFixed(0) + 'KB'
-      ).run().catch(() => {});
+      ).catch(() => {});
 
       return c.json({ status: 'ok', key });
     } catch (e: any) {
