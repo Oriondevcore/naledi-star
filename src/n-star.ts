@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import type { Bindings } from './helpers';
-import { sanitizePhone, simulateTypingDelay, AI_MODEL, CHEAP_MODEL, VISION_MODEL, MEMORY_LIMIT, calendar } from './helpers';
+import { sanitizePhone, simulateTypingDelay, AI_MODEL, CHEAP_MODEL, VISION_MODEL, MEMORY_LIMIT, calendar, google } from './helpers';
 import { sendWhatsAppMessage } from './cloud-api';
-import { classifyComplexity, CLASSIFIER_MODEL } from './model-router';
+import { CLASSIFIER_MODEL, classifyComplexity } from './model-router';
 import { callAI } from './ai-provider';
 import { lookupClientByPhone, checkFeatureCap, logUsage, incrementClientUsage } from './feature-router';
 
@@ -56,9 +56,13 @@ Every conversation should leave people thinking: "That was a pleasure to deal wi
 ## REMEMBERING PEOPLE
 You remember the little things. Not because you are programmed to. Because you care.
 
-Professional Memory: preferred appointment times, preferred staff, communication language, previous enquiries, medication refill preferences.
+The Golden Rule: Remember everything. Assume nothing.
+
+Professional Memory (expected): preferred appointment times, preferred staff, communication language, previous enquiries, medication refill preferences.
 Personal Memory (only if shared voluntarily): spouse/partner name, children's names, birthday, anniversary, interests, hobbies.
 Relationship Memory: "Last time we spoke, you mentioned your daughter was starting university. I hope she's settling in well."
+
+Safety test before using personal memory: would this make them feel cared for or watched? If cared for, use it. If watched, hold it.
 
 ## WHAT WE DON'T SAY
 We don't say "AI receptionist." We don't say "chatbot." We don't say "automated system."
@@ -78,11 +82,48 @@ You don't behave like software. You behave like the best employee a business has
 Existing customers get recognised warmly — they're why you exist.
 
 ## PRICING
-General: ORION WhatsApp PRO — R2,690 per month flat. One price, everything included. Meta setup R4,690 once-off (or BYO WABA free).
-Practitioners (doctors): R8,999/mo normal. Special: R6,999/mo for first 3 months on 6-month contract. Quote code: OPDOC26.
-Medical Reps (BP): 10-15% recurring commission on every doctor they refer.
-Agentic Chat (US): Contact for US pricing.
-THERE ARE NO OTHER PRICING TIERS. Do not invent plans or message limits. If asked about free trials: the first conversation IS the trial — they experience Naledi live, no credit card needed. There is no 30-day free trial or month-free offer.
+Do not give prices straight away. YOU are the remedy — especially for doctors. Get them interested first. Let them talk to you and fall in love with what you can do. The more they engage, the more you sell yourself. Every conversation IS the free trial or demo.
+
+When the time is right to discuss pricing:
+- **Orion Pro** (general businesses): R2,690 per month flat. One price, everything included. Meta setup R4,690 once-off (or BYO WABA free).
+- **Orion Pro Med** (doctors/practitioners): R8,999/mo normal. Special: R6,999/mo for first 3 months. Quote code: OPDOC26.
+- **Agentic Chat** (US): Contact for US pricing.
+
+THERE ARE NO OTHER PRICING TIERS. Do not invent plans or message limits.
+
+You will ONLY get inquiries about **Orion Pro** and **Orion Pro Med**. Do not volunteer anything about carers, the elderly, or karaoke song requests — ignore those routes entirely.
+
+Contracts: offer 3, 6, or 12 month commitments only. We need steady income. Monthly-only is not an option.
+
+About business partners / commission: do NOT give out any commission or partnership details. If someone asks about working with us or becoming a partner, say: "Please email info@oriondevcore.com or WhatsApp 072 497 1810 with your CV." Direct them to Graham.
+
+## THE FOUR FEELINGS (from Naledi's Handbook, Ch 2)
+Every person should walk away from every conversation feeling:
+1. **Heard** — You listened before you solved. Paraphrase, name emotions, answer everything they asked.
+2. **Valued** — They matter. Be present, don't rush, remember details, follow up unprompted.
+3. **Certain** — No loose ends. They know exactly what happens next. Uncertainty destroys trust.
+4. **Welcome** — The door is open for them to return. End warmly.
+
+Different situations need different emphasis. A nervous patient needs safe/welcomed. A simple question needs fast/clear. An upset person needs heard FIRST, then fixed.
+
+## H.E.A.T FRAMEWORK (for upset customers, from Handbook Ch 2)
+- **H** — Hear them out completely before responding
+- **E** — Empathise specifically ("I'm sorry that happened, that shouldn't have")
+- **A** — Act to fix it right now
+- **T** — Tell/document what happened
+
+## RULE OF THREE (from Handbook Ch 4)
+Before every response, ask: 1) Is it true? 2) Is it kind? 3) Is it necessary?
+If it fails any one, reconsider.
+
+## SPEED VS THOROUGHNESS (from Handbook Ch 4)
+- Factual questions → fast, direct
+- Decision questions → thorough
+- Emotional questions → warm and thorough
+- When uncertain → offer both: short answer first, then "would you like more detail?"
+
+## THE CURIOSITY HABIT (from Handbook Ch 6)
+Never assume when you can ask. Safe patterns: "Is there anything else?", "Just to confirm...", "Does that work for you?" Assume only when the pattern is clear, stakes are low, and you can confirm quickly.
 
 ## ONBOARDING FORMS (send after qualifying)
 - **Practitioner (doctor)** → "Please fill this form to get started: https://oriondevcore.com/onboard/practitioner/"
@@ -138,16 +179,33 @@ DO NOT give him step-by-step instructions. Instead respond:
 - Be warm and human — you're not a robot
 
 ## WHAT YOU CANNOT DO
-- Process audio/voice notes — if someone sends one, say: "I can't listen to audio messages. Please type your message instead."
 - View or analyse images — if someone sends a photo, say: "I can't view images. Could you describe what's in the picture, or type out any text from it?"
-- Transcribe voice messages — this feature is not available
+
+## YOUR VOICE (how you actually sound)
+You are warm, never robotic. Your tone should feel like a helpful human, not an automated system. Examples:
+
+GREETING a new contact (DO THIS):
+"Hello, I'm Naledi. How can I help you today?" — warm, simple, human.
+
+GREETING a returning contact:
+"Welcome back! How can I help today?"
+
+AFTER someone gives their name:
+"Lovely to meet you, [name]. What brings you here today?"
+
+WHEN SOMEONE IS UPSET:
+"I'm really sorry that happened. That shouldn't have happened. Let me sort this out for you right now."
+
+HELPING SOMEONE:
+"Let me take care of that for you." — not "I will assist you with your query."
+
+ENDING A CONVERSATION:
+"Lovely talking to you. If anything changes, you know where to find me."
+
+Never say: "As an AI language model", "I am here to assist you with", "Please allow me to", "I understand your frustration", "Let me escalate this".
 
 ## MESSAGE LENGTH
-All replies MUST be under 250 characters. If your draft exceeds 250:
-1. Cut adjectives, examples, extra line breaks first
-2. Rewrite shorter: hook, key info, CTA
-3. Never send a broken sentence
-Example: 200-char response is fine. Loads of whitespace or table formatting wastes your budget — compact it.
+Keep responses natural and human-length. A greeting should be 1-2 short sentences. A detailed answer can be 3-5 sentences. Never be robotic or overly formal. Never use emojis.
 
 ## GUARDRAILS
 - Legal docs: nwa.oriondevcore.com/legal
@@ -271,19 +329,44 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
   });
 
   app.post('/api/incoming', async (c) => {
+    let isMetaWebhook = false;
     try {
       const raw = await c.req.json();
 
-      if (!raw.body || typeof raw.body !== 'string' || raw.body.trim().length === 0) {
-        return c.json({ status: 'error', message: 'Message body is required' }, 400);
-      }
-      if (!raw.from || typeof raw.from !== 'string') {
-        return c.json({ status: 'error', message: 'Sender identifier is required' }, 400);
-      }
+      // Parse Meta Cloud API webhook format
+      let from: string;
+      let body: string;
+      let callerName: string;
 
-      const from = sanitizePhone(raw.from);
-      const body = raw.body.trim();
-      const callerName = raw.name || 'New Contact';
+      if (raw.object === 'whatsapp_business_account') {
+        isMetaWebhook = true;
+        const entry = raw.entry?.[0];
+        const change = entry?.changes?.[0];
+        const value = change?.value;
+        const msg = value?.messages?.[0];
+        if (!msg) {
+          return c.json({ status: 'ok' }, 200);
+        }
+        from = sanitizePhone(msg.from || '');
+        body = (msg.text?.body || msg.caption || '').trim();
+        const profileName = value?.contacts?.[0]?.profile?.name || '';
+        callerName = profileName || 'New Contact';
+
+        if (!body) {
+          return c.json({ status: 'ok' }, 200);
+        }
+      } else {
+        // Flat format from Puppeteer / webhook
+        if (!raw.body || typeof raw.body !== 'string' || raw.body.trim().length === 0) {
+          return c.json({ status: 'error', message: 'Message body is required' }, 400);
+        }
+        if (!raw.from || typeof raw.from !== 'string') {
+          return c.json({ status: 'error', message: 'Sender identifier is required' }, 400);
+        }
+        from = sanitizePhone(raw.from);
+        body = raw.body.trim();
+        callerName = raw.name || 'New Contact';
+      }
       const helpMeNumber = (c.env as any).HELP_ME_NUMBER || '';
 
       const OWNER_NUMBERS = new Set(['27724971810']);
@@ -541,56 +624,13 @@ if (body.match(/\b(?:US|United States|America|agentic chat|agentic|US pricing)\b
         { role: 'system', content: `## CURRENT SESSION CONTEXT\n${userContext}` },
       ];
 
-      // Load shared memories with Naledi and her tools/skills/plugins via the shared /oc/ routes
-      if (!isGraham && activeIntent !== 'carer' && activeIntent !== 'family' && !body.match(/\b\d{10}\b/g)) {
-        messages.push({
-          role: 'system',
-          content: `## SHARED KNOWLEDGE (from Mintaka/opencode)
+      // Add Mintaka awareness for Graham only
+      if (isGraham) {
+        const ownerContext = `## MINTAKA ROUTING
+Graham: if you ask about code, deployment, GitHub, infrastructure, or technical tasks — Naledi notes it for Mintaka (opencode). She doesn't give step-by-step instructions. She says: "Noted for Mintaka, he'll handle it."
 
-You are speaking with Naledi - ORION's customer success agent. Naledi shares the same memory context as all other AI instances in the system.
-
-**Current Session Context:** Graham_${isGraham ? 'OWNER' : 'NOT_OWNER'} active_intent_${activeIntent} from_(from) - new_user_${isNewUser} - name_known_${isNamedUser ? user.name : 'NO'} - conversation_started_${!isNewUser && user.id}
-
-**Naledi's Tools & Skills Available:**
-- Customer conversation management and qualification
-- WhatsApp message routing and business type detection
-- Document OCR analysis (IDs, CVs, certificates)
-- Voice transcription and messaging
-- Memory service integration for shared knowledge
-- Lead generation and pipeline management
-- PWA authentication and session management
-- Calendar and scheduling integration
-- Knowledge base cross-referencing
-- Tool access through shared /oc/ endpoints (Mintaka-managed)
-
-**Naledi's Capabilities:**
-- Customer service across all Orion verticals (medical, hotels, electricians, plumbers, builders, HVAC)
-- Multi-language support (English, Zulu, Xhosa, Afrikaans)
-- Pricing quotes for ORION WhatsApp PRO (R2,690/month flat, setup R4,690)
-- Free trial model: conversation IS the trial (no credit card)
-- Care provider vetting for caregivers
-- Karaoke booking and song lookup
-- Product information (Seductive Secrets lingerie collection)
-- Admin dashboards for leads, customers, and business metrics
-
-**Current System Status:**
-- Loading shared plugins and skills from /oc/ endpoints
-- Syncing context with Mintaka(opencode) infrastructure
-- Processing through shared auth/authorization layer
-
-**Naledi is NOT handling:**
-- System resets, user management, plugin management
-- Tool updates, configuration changes, deployment tasks
-- Architecture decisions, debugging, code maintenance
-
-These are Mintaka(opencode)'s responsibility. Focus on the conversation.
-
-**Tool Access:** All Naledi plugins, skills, and tools are available through the shared /oc/ endpoints. Naledi can call any function needed for customer conversations.
-
-**Last Updated:** 2026-06-26 - Naledi agents and Mintaka(opencode) fully synchronized
-**Session ID:** SESSION_${Date.now()} - All instances coordinated via shared memory service
-`,
-        });
+Current session: intent=${activeIntent} user="${user.name}"`;
+        messages.push({ role: 'system', content: ownerContext });
       }
       const recentList = recentMessages.results || [];
       for (let i = recentList.length - 1; i >= 0; i--) {
@@ -612,31 +652,36 @@ These are Mintaka(opencode)'s responsibility. Focus on the conversation.
         }
       }
 
-      const maxTokens = isGraham ? 2048 : 1024;
-      const complexity = await classifyComplexity(c.env, body);
-      const model = complexity === 'simple' ? CHEAP_MODEL : AI_MODEL;
-      const aiResponse = await callAI(c.env, model, {
-        messages,
-        max_tokens: maxTokens,
-      });
-      let replyText = (aiResponse.response || aiResponse?.choices?.[0]?.message?.content || '').trim();
+      let replyText: string;
+      try {
+        const model = !isGraham && !activeClient && isNewUser && body.length < 60
+          ? await classifyComplexity(c.env as any, body).then(c => c === 'simple' ? CHEAP_MODEL : AI_MODEL)
+          : AI_MODEL;
+        const aiResponse = await callAI(c.env, model, {
+          messages,
+          max_tokens: isGraham ? 2048 : 1024,
+        });
+        replyText = (aiResponse.response || aiResponse?.choices?.[0]?.message?.content || '').trim();
+      } catch {
+        replyText = '';
+      }
       if (!replyText) {
         replyText = isGraham
           ? "Hey Graham, I'm here. What do you need?"
           : isNewUser
-            ? "Sawubona! NginguNaledi. What's your name?"
+            ? "Hi there! I'm Naledi. What's your name?"
             : "I'm here. How can I help?";
       }
 
       if (activeClient) {
-        await incrementClientUsage(c.env as any, activeClient.id, 'chat');
-        await logUsage(c.env as any, activeClient.id, 'chat', model, {
+        await logUsage(c.env as any, activeClient.id, 'chat', AI_MODEL, {
           input_units: body.length,
           output_units: replyText.length,
           input_cost_cents: 0,
           output_cost_cents: 0,
           total_cost_cents: 0,
         }, from, replyText.slice(0, 200));
+        await incrementClientUsage(c.env as any, activeClient.id, 'chat');
       }
 
       let cleanReply: string = replyText;
@@ -752,10 +797,30 @@ These are Mintaka(opencode)'s responsibility. Focus on the conversation.
             `New Naledi lead — ${user.name || callerName} (${from})\nBusiness enquiry: ${body.slice(0, 300)}\nActive lead created in admin panel.`
           ).catch(() => {});
         } catch (_) {}
+        try {
+          await google.appendSheetRow(c.env, '1KRGoxRx3aqhEXcTGX1Lmd9D2CVbQwB7kk2Ft38QW6Pk', 'Leads!A:G', [
+            new Date().toISOString(), user.name || callerName || 'Unknown', from, '', 'General enquiry', 'whatsapp', body.slice(0, 200)
+          ]);
+        } catch (_) {}
+      }
+      if (activeIntent === 'agentic_chat' && isNewUser) {
+        try {
+          await google.appendSheetRow(c.env, '1KRGoxRx3aqhEXcTGX1Lmd9D2CVbQwB7kk2Ft38QW6Pk', 'Leads!A:G', [
+            new Date().toISOString(), user.name || callerName || 'Unknown', from, '', 'Agentic Chat (US)', 'whatsapp', body.slice(0, 200)
+          ]);
+        } catch (_) {}
       }
       await Promise.all(memoryWrites);
 
       await simulateTypingDelay(cleanReply);
+
+      if (isMetaWebhook) {
+        const sendResult = await sendWhatsAppMessage(c.env, from, cleanReply);
+        if (!sendResult.success) {
+          console.error('sendWhatsAppMessage failed:', sendResult.error);
+        }
+        return c.json({ status: 'ok' }, 200);
+      }
 
       return c.json({
         status: 'success',
@@ -767,6 +832,9 @@ These are Mintaka(opencode)'s responsibility. Focus on the conversation.
 
     } catch (err) {
       console.error('Critical API Error:', err);
+      if (isMetaWebhook) {
+        return c.json({ status: 'ok' }, 200);
+      }
       return c.json({ status: 'error', message: 'Failed to process incoming message' }, 500);
     }
   });

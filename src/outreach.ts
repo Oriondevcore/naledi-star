@@ -7,6 +7,10 @@ export const DAILY_LIMIT = 25;
 const BIZ_START = 8;
 const BIZ_END = 19;
 
+function isMobile(phone: string): boolean {
+  return /^0[678]/.test(phone.replace(/[^0-9]/g, ''));
+}
+
 const SEED_LEADS = [
   { business_name: "Amanzimtoti Fisheries", phone: "0319036067", category: "restaurant", address: "Shop 29, Arbour Crossing" },
   { business_name: "Blue Lagoon Restaurant", phone: "0319033320", category: "restaurant", address: "King Shaka Ave" },
@@ -92,13 +96,14 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
       await ensureTables(c.env.NALEDI_DB);
       let count = 0;
       for (const lead of SEED_LEADS) {
+        if (!isMobile(lead.phone)) continue;
         const existing = await c.env.NALEDI_DB.prepare(
           'SELECT id FROM outreach_leads WHERE phone = ? AND business_name = ?'
         ).bind(lead.phone, lead.business_name).first();
         if (!existing) {
           await c.env.NALEDI_DB.prepare(
             'INSERT INTO outreach_leads (business_name, phone, category, address) VALUES (?, ?, ?, ?)'
-          ).bind(lead.business_name, lead.phone, lead.category, lead.address || null).run();
+          ).bind(lead.phone, lead.business_name, lead.category, lead.address || null).run();
           count++;
         }
       }

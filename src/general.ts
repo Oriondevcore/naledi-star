@@ -286,7 +286,7 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             from: (c.env as any).GRAHAM_NUMBER || '27724971810',
-            body: `🚨 EMERGENCY ALERT from ${name || phone} (elderly client). Their carer is ${assign.carer_name} (${assign.carer_phone}). Please notify them immediately.`,
+            body: `EMERGENCY ALERT from ${name || phone} (elderly client). Their carer is ${assign.carer_name} (${assign.carer_phone}). Please notify them immediately.`,
             name: 'Naledi Star Alert',
           }),
         });
@@ -294,7 +294,7 @@ export function register(app: Hono<{ Bindings: Bindings }>) {
     }
 
     await c.env.NALEDI_DB.prepare(
-      "INSERT INTO naledi_logs (user_id, user_name, user_message, naledi_reply) VALUES (?, ?, '🚨 EMERGENCY BUTTON PRESSED', 'Alert sent to carer')"
+      "INSERT INTO naledi_logs (user_id, user_name, user_message, naledi_reply) VALUES (?, ?, 'EMERGENCY BUTTON PRESSED', 'Alert sent to carer')"
     ).bind(from, name || 'Unknown').run();
 
     return c.json({ status: 'success', alerted: !!assign });
@@ -1878,6 +1878,154 @@ Follow up within 24 hours.
 </html>`);
   });
 
+  // ── Admin: AI Costs API ──
+  app.get('/api/admin/costs', async (c) => {
+    const adminPhone = sanitizePhone(c.req.query('phone') || '');
+    if (adminPhone !== '27724971810') return c.json({ error: 'Unauthorized' }, 403);
+    const range = c.req.query('range') || 'all';
+    try {
+      await c.env.NALEDI_DB.prepare(
+        'CREATE TABLE IF NOT EXISTS ai_usage_log (id INTEGER PRIMARY KEY AUTOINCREMENT, model TEXT NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, cost_usd REAL NOT NULL DEFAULT 0, created_at TEXT DEFAULT (datetime(\'now\')))'
+      ).run();
+      let where = '';
+      if (range === 'today') where = "WHERE created_at >= datetime('now', '-24 hours')";
+      else if (range === '7d') where = "WHERE created_at >= datetime('now', '-7 days')";
+      else if (range === '30d') where = "WHERE created_at >= datetime('now', '-30 days')";
+      else if (range === 'month') where = "WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')";
+      const summary = await c.env.NALEDI_DB.prepare(
+        'SELECT COALESCE(SUM(input_tokens),0) as total_input, COALESCE(SUM(output_tokens),0) as total_output, COALESCE(SUM(cost_usd),0) as total_cost, COUNT(*) as total_calls FROM ai_usage_log ' + where
+      ).all<any>();
+      const byModel = await c.env.NALEDI_DB.prepare(
+        'SELECT model, COALESCE(SUM(input_tokens),0) as input_tokens, COALESCE(SUM(output_tokens),0) as output_tokens, COALESCE(SUM(cost_usd),0) as cost_usd, COUNT(*) as calls FROM ai_usage_log ' + where + ' GROUP BY model ORDER BY cost_usd DESC'
+      ).all<any>();
+      const byDay = await c.env.NALEDI_DB.prepare(
+        'SELECT date(created_at) as day, COALESCE(SUM(cost_usd),0) as cost_usd, COUNT(*) as calls FROM ai_usage_log ' + where + ' GROUP BY day ORDER BY day DESC LIMIT 30'
+      ).all<any>();
+      return c.json({ status: 'success', summary: summary.results?.[0], byModel: byModel.results || [], byDay: byDay.results || [] });
+    } catch (e: any) { return c.json({ error: e.message }, 500); }
+  });
+
+  // ── Admin: AI Costs Dashboard ──
+  app.get('/admin/costs', async (c) => {
+    return c.html(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Costs — Orion Admin</title>
+<meta name="theme-color" content="#080809">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,sans-serif;background:#080809;color:#e0e0e0;padding:20px}
+  .container{max-width:900px;margin:0 auto}
+  h1{font-size:20px;color:#c8a84e;margin-bottom:4px}
+  .sub{color:#666;font-size:13px;margin-bottom:20px}
+  .login{text-align:center;padding:80px 20px}
+  .login input{padding:10px;border-radius:8px;border:1px solid #333;background:#111;color:#fff;width:240px;margin-bottom:10px}
+  .login button{padding:10px 24px;border-radius:8px;border:none;background:#c8a84e;color:#000;font-weight:600;cursor:pointer}
+  .nav{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .nav a{color:#c8a84e;text-decoration:none;font-size:13px;padding:6px 12px;border:1px solid #2a2a30;border-radius:8px}
+  .range{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+  .range button{padding:6px 14px;border-radius:8px;border:1px solid #333;background:#111;color:#ccc;cursor:pointer;font-size:13px}
+  .range button.active{background:#c8a84e;color:#000;border-color:#c8a84e;font-weight:600}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+  .card{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:10px;padding:16px}
+  .card-label{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#666;margin-bottom:6px}
+  .card-value{font-size:22px;font-weight:700;color:#fff}
+  .card-sub{font-size:12px;color:#888;margin-top:2px}
+  .card.gold{border-color:#c8a84e}
+  .card.gold .card-value{color:#c8a84e}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}
+  th{text-align:left;color:#666;font-weight:400;padding:8px 6px;border-bottom:1px solid #1a1a1a;font-size:11px;text-transform:uppercase;letter-spacing:0.08em}
+  td{padding:8px 6px;border-bottom:1px solid #111;color:#ccc}
+  td:last-child,th:last-child{text-align:right}
+  .bar-wrap{display:flex;align-items:center;gap:8px}
+  .bar-fill{height:6px;border-radius:3px;background:#c8a84e;min-width:2px}
+  .bar-bg{flex:1;background:#1a1a1a;border-radius:3px;overflow:hidden}
+  .muted{color:#555;font-size:11px;margin-top:16px;text-align:center}
+  .footer{text-align:center;color:#444;font-size:12px;margin-top:30px;padding-top:16px;border-top:1px solid #1a1a1a}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>AI Cost Tracker</h1>
+<p class="sub">Cloudflare Workers AI spend — llama-4-scout only</p>
+<div class="nav">
+  <a href="/dashboard">Dashboard</a>
+  <a href="/admin/customers">Customers</a>
+  <a href="/admin/guide">Guide</a>
+</div>
+<div class="login" id="login">
+  <div><input type="tel" id="phone" placeholder="Phone number" value="27724971810"></div>
+  <button onclick="auth()">Access Dashboard</button>
+</div>
+<div id="dashboard" style="display:none">
+  <div class="range" id="rangeBtns">
+    <button data-r="today">Today</button>
+    <button data-r="7d" class="active">7 Days</button>
+    <button data-r="30d">30 Days</button>
+    <button data-r="month">This Month</button>
+    <button data-r="all">All Time</button>
+  </div>
+  <div class="cards" id="summaryCards"></div>
+  <h2 style="font-size:14px;color:#888;margin-bottom:10px">By Model</h2>
+  <table id="modelTable"><thead><tr><th>Model</th><th>Calls</th><th>Input Tokens</th><th>Output Tokens</th><th>Cost (USD)</th><th>Cost (ZAR)</th></tr></thead><tbody></tbody></table>
+  <h2 style="font-size:14px;color:#888;margin-bottom:10px">Daily Spend</h2>
+  <div id="dailyChart" style="margin-bottom:24px"></div>
+  <div class="muted">Rates: @cf/meta/llama-4-scout-17b-16e-instruct — $0.27/M input / $0.85/M output. ZAR rate: ~R18/$</div>
+</div>
+<div class="footer">AI Costs &middot; Powered by opencode</div>
+</div>
+<script>
+const USD_TO_ZAR = 18;
+let phone = localStorage.getItem('adminPhone') || '27724971810';
+document.getElementById('phone').value = phone;
+function auth(){phone=document.getElementById('phone').value;localStorage.setItem('adminPhone',phone);load()}
+function fmt(n){return Number(n).toFixed(6)}
+function fmt$(n){return '$'+Number(n).toFixed(4)}
+function fmtZAR(n){return 'R'+Number(n*USD_TO_ZAR).toFixed(2)}
+async function load(range){
+  range=range||'7d';
+  document.querySelectorAll('#rangeBtns button').forEach(b=>b.classList.toggle('active',b.dataset.r===range));
+  try{
+    const r=await fetch('/api/admin/costs?phone='+phone+'&range='+range);
+    const d=await r.json();
+    if(d.error){document.getElementById('dashboard').style.display='none';document.getElementById('login').style.display='block';return}
+    document.getElementById('login').style.display='none';document.getElementById('dashboard').style.display='block';
+    renderSummary(d.summary);renderModelTable(d.byModel);renderDailyChart(d.byDay);
+  }catch(e){alert('Error: '+e.message)}
+}
+function renderSummary(s){
+  if(!s) return;
+  document.getElementById('summaryCards').innerHTML=\`
+    <div class="card gold"><div class="card-label">Total Cost</div><div class="card-value">\${fmt\$(s.total_cost)}</div><div class="card-sub">~\${fmtZAR(s.total_cost)}</div></div>
+    <div class="card"><div class="card-label">API Calls</div><div class="card-value">\${s.total_calls}</div></div>
+    <div class="card"><div class="card-label">Input Tokens</div><div class="card-value">\${Number(s.total_input).toLocaleString()}</div></div>
+    <div class="card"><div class="card-label">Output Tokens</div><div class="card-value">\${Number(s.total_output).toLocaleString()}</div></div>
+  \`;
+}
+function renderModelTable(models){
+  const tbody=document.querySelector('#modelTable tbody');
+  if(!models||!models.length){tbody.innerHTML='<tr><td colspan="6" style="color:#555;text-align:center">No data</td></tr>';return}
+  tbody.innerHTML=models.map(m=>\`<tr><td>\${m.model.replace('@cf/meta/','')}</td><td>\${m.calls}</td><td>\${Number(m.input_tokens).toLocaleString()}</td><td>\${Number(m.output_tokens).toLocaleString()}</td><td>\${fmt\$(m.cost_usd)}</td><td>\${fmtZAR(m.cost_usd)}</td></tr>\`).join('');
+}
+function renderDailyChart(days){
+  const el=document.getElementById('dailyChart');
+  if(!days||!days.length){el.innerHTML='<p style="color:#555;font-size:13px">No data for this period</p>';return}
+  const max=Math.max(...days.map(d=>Number(d.cost_usd)),0.01);
+  el.innerHTML=days.reverse().map(d=>\`
+    <div class="bar-wrap" style="margin-bottom:4px">
+      <span style="min-width:80px;font-size:12px;color:#888">\${d.day}</span>
+      <div class="bar-bg"><div class="bar-fill" style="width:\${(d.cost_usd/max*100).toFixed(1)}%"></div></div>
+      <span style="min-width:80px;font-size:12px;color:#ccc;text-align:right">\${fmt\$(d.cost_usd)}</span>
+    </div>\`).join('');
+}
+document.getElementById('rangeBtns').addEventListener('click',e=>{if(e.target.dataset.r)load(e.target.dataset.r)});
+if(localStorage.getItem('adminPhone'))load();
+</script>
+</body>
+</html>`);
+  });
+
   // ── Owner Dashboard — Multi-tenant client management ──
   app.get('/admin/owner', async (c) => {
     return c.html(`<!DOCTYPE html>
@@ -2316,7 +2464,24 @@ function escapeHtml(str) {
         return c.json({ status: 'ok' });
       }
 
+      const db = c.env.NALEDI_DB;
+      await db.prepare(
+        "CREATE TABLE IF NOT EXISTS processed_messages (id TEXT PRIMARY KEY, created_at TEXT DEFAULT (datetime('now')))"
+      ).run();
+
       for (const msg of messages) {
+        const msgId = msg.id;
+        if (!msgId) continue;
+
+        const existing = await db.prepare(
+          'SELECT id FROM processed_messages WHERE id = ?'
+        ).bind(msgId).first();
+        if (existing) continue;
+
+        await db.prepare(
+          'INSERT OR IGNORE INTO processed_messages (id) VALUES (?)'
+        ).bind(msgId).run();
+
         const from = msg.from;
         const msgType = msg.type;
         let body = '';
@@ -2327,7 +2492,34 @@ function escapeHtml(str) {
           const interactive = msg.interactive;
           body = interactive?.button_reply?.title || interactive?.list_reply?.title || '';
         } else if (msgType === 'audio') {
-          body = '[Audio message]';
+          try {
+            const audioId = msg.audio?.id;
+            const token = c.env.META_CLOUD_API_TOKEN;
+            if (audioId && token) {
+              const mediaRes = await fetch(`https://graph.facebook.com/v25.0/${audioId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (mediaRes.ok) {
+                const mediaData: any = await mediaRes.json();
+                if (mediaData.url) {
+                  const audioRes = await fetch(mediaData.url, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  if (audioRes.ok) {
+                    const audioBuf = await audioRes.arrayBuffer();
+                    const base64 = btoa(String.fromCharCode(...new Uint8Array(audioBuf)));
+                    const whisper: any = await c.env.AI.run('@cf/openai/whisper-large-v3-turbo', {
+                      audio: base64,
+                    });
+                    body = (whisper.text || '').trim();
+                  }
+                }
+              }
+            }
+            if (!body) body = '[Audio message]';
+          } catch {
+            body = '[Audio message]';
+          }
         } else if (msgType === 'image') {
           body = '[Image received]';
         } else {
@@ -2348,6 +2540,31 @@ function escapeHtml(str) {
           if (!result.success) {
             console.error('sendWhatsAppMessage failed:', result.error);
           }
+        }
+
+        const knownCount = await db.prepare(
+          'SELECT COUNT(*) as c FROM naledi_logs WHERE user_id = ?'
+        ).bind(from).first<{ c: number }>();
+        if (knownCount && knownCount.c <= 1 && c.env.DISCORD_WEBHOOK_URL) {
+          const preview = body.length > 200 ? body.substring(0, 200) + '...' : body;
+          await fetch(c.env.DISCORD_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: null,
+              embeds: [{
+                title: 'New Lead',
+                color: 0xc8a84e,
+                fields: [
+                  { name: 'Name', value: contactName, inline: true },
+                  { name: 'Phone', value: from, inline: true },
+                  { name: 'Message', value: preview },
+                ],
+                timestamp: new Date().toISOString(),
+              }],
+              username: 'Naledi Leads',
+            }),
+          }).catch(() => {});
         }
       }
 

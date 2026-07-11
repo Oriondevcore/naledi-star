@@ -175,6 +175,45 @@ function makeOpencodeClient() {
   return { client: c, dying };
 }
 
+function makeCellCClient() {
+  const dying = { current: false };
+  const c = makeClient('naledi-cellc', 'naledi-cellc', 'qr-naledi-cellc.png', dying);
+
+  c.on('message', async (msg) => {
+    if (dying.current) return;
+    try {
+      const contact = await msg.getContact();
+      const name = contact.name || contact.pushname || contact.shortName || 'Unknown';
+
+      if (msg.type === 'ptt' || msg.type === 'audio') {
+        log(`[CellC] ${name}: [Voice note]`);
+        const media = await msg.downloadMedia();
+        if (!media) { await msg.reply('Sorry, I could not process your voice note.'); return; }
+        const transcribed = await transcribeAudio(media.data, media.mimetype);
+        if (!transcribed) { await msg.reply('Sorry, I could not understand your voice note.'); return; }
+        await processTextMessage(msg, transcribed, contact, name, API_ENDPOINT);
+        return;
+      }
+
+      if (msg.type === 'image' || msg.type === 'document') {
+        log(`[CellC] ${name}: [${msg.type}]`);
+        const media = await msg.downloadMedia();
+        if (!media) { await msg.reply('Sorry, I could not process that file.'); return; }
+        await processDocumentMessage(msg, media.data, media.mimetype, contact, name);
+        return;
+      }
+
+      if (msg.type !== 'chat') return;
+      await processTextMessage(msg, msg.body, contact, name, API_ENDPOINT);
+    } catch (e) {
+      if (dying.current) return;
+      log(`[CellC] Handler error: ${e.message}`);
+    }
+  });
+
+  return { client: c, dying };
+}
+
 async function pollOutbox(clientObj, sender) {
   const cl = clientObj.client;
   const dying = clientObj.dying;
@@ -320,14 +359,18 @@ async function checkMemory() {
 
   clients.naledi = makeNalediClient();
   clients.opencode = makeOpencodeClient();
+  clients.cellc = makeCellCClient();
 
   await clients.naledi.client.initialize();
   await clients.opencode.client.initialize();
+  await clients.cellc.client.initialize();
 
   setInterval(() => pollOutbox(clients.naledi, 'naledi'), 30000);
   setInterval(() => pollOutbox(clients.opencode, 'opencode'), 30000);
+  setInterval(() => pollOutbox(clients.cellc, 'cellc'), 30000);
   setInterval(checkMemory, 300000);
   setInterval(() => sendHeartbeat('naledi', 'connected').catch(() => {}), 60000);
+  setInterval(() => sendHeartbeat('cellc', 'connected').catch(() => {}), 60000);
   setTimeout(checkMemory, 5000);
 
   process.on('SIGTERM', async () => {

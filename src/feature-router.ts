@@ -54,17 +54,17 @@ export async function checkFeatureCap(
       `SELECT enabled, current_usage, monthly_cap, feature_key
        FROM client_features
        WHERE client_id = ? AND feature_key = ? AND billing_period = ?`
-    ).bind(clientId, featureKey, billingPeriod).first<FeatureStatus>();
+    ).bind(clientId, featureKey, billingPeriod).first<{ enabled: number; current_usage: number; monthly_cap: number; feature_key: string }>();
 
     if (!row || !row.enabled) {
       return { ok: false, enabled: false, current: 0, cap: 0, feature_key: featureKey, reason: 'feature_disabled' };
     }
 
-    if (row.current >= row.monthly_cap) {
-      return { ok: false, enabled: true, current: row.current, cap: row.cap, feature_key: featureKey, reason: 'cap_reached' };
+    if (row.current_usage >= row.monthly_cap) {
+      return { ok: false, enabled: true, current: row.current_usage, cap: row.monthly_cap, feature_key: featureKey, reason: 'cap_reached' };
     }
 
-    return { ok: true, enabled: true, current: row.current, cap: row.cap, feature_key: featureKey };
+    return { ok: true, enabled: true, current: row.current_usage, cap: row.monthly_cap, feature_key: featureKey };
   } catch {
     return { ok: false, enabled: false, current: 0, cap: 0, feature_key: featureKey, reason: 'error' };
   }

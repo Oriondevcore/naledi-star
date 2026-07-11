@@ -7,6 +7,7 @@ import { register as registerArt } from './art';
 import { register as registerGeneral } from './general';
 import { register as registerOutreach } from './outreach';
 import { register as registerPayment } from './payment';
+import { register as registerOffice } from './office';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -17,5 +18,6 @@ registerArt(app);
 registerGeneral(app);
 registerOutreach(app);
 registerPayment(app);
+registerOffice(app);
 
 export default app;

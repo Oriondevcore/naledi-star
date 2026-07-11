@@ -1,11 +1,11 @@
 import { callAI } from './ai-provider';
 
-export const CLASSIFIER_MODEL = 'gpt-oss-20b';
+export const CLASSIFIER_MODEL = 'llama-4-scout';
 
 export type Complexity = 'simple' | 'complex';
 
 export async function classifyComplexity(
-  env: { SILICONFLOW_API_KEY?: string; ZAI_API_KEY?: string; AI?: any },
+  env: { AI?: any },
   body: string,
 ): Promise<Complexity> {
   try {

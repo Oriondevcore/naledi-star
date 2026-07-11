@@ -4,6 +4,9 @@ const GOOGLE_CALENDAR_URL = 'https://www.googleapis.com/calendar/v3';
 export const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/documents',
+  'https://www.googleapis.com/auth/drive.file',
 ];
 
 export function getAuthUrl(clientId: string, redirectUri: string): string {

@@ -1,4 +1,5 @@
 import * as calendar from './calendar';
+import * as google from './google';
 
 export type Bindings = {
   DB: D1Database;
@@ -13,7 +14,6 @@ export type Bindings = {
   CLOUDFLARE_API_TOKEN?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
-  SILICONFLOW_API_KEY?: string;
   PAYFAST_PASSPHRASE?: string;
   PAYFAST_MERCHANT_ID?: string;
   META_VERIFY_TOKEN?: string;
@@ -29,25 +29,22 @@ export type Bindings = {
 
 export type Env = Bindings & {
   GRAHAM_NUMBER?: string;
-  SILICONFLOW_API_KEY?: string;
   ADMIN_AUTH_CODE?: string;
 };
 
-export const AI_MODEL = 'gpt-oss-20b';
-export const CHEAP_MODEL = 'gpt-oss-20b';
-export const VISION_MODEL = 'glm-4.6v-flash';
+export const AI_MODEL = 'llama-4-scout';
+export const CHEAP_MODEL = 'llama-4-scout';
+export const VISION_MODEL = 'llama-4-scout';
 export const MEMORY_LIMIT = 10;
 
 export const sanitizePhone = (raw: string): string =>
   raw.replace(/@c\.us$/, '').replace(/[^0-9]/g, '');
 
-export const simulateTypingDelay = async (text: string) => {
-  const wordsPerMinute = 160;
-  const wordCount = text.split(/\s+/).length;
-  const baseDelayMs = (wordCount / wordsPerMinute) * 60 * 1000;
-  const naturalVariance = Math.random() * 1200 + 800;
-  const totalDelay = Math.min(baseDelayMs + naturalVariance, 6500);
-  await new Promise((resolve) => setTimeout(resolve, totalDelay));
+export const simulateTypingDelay = async (_text: string) => {
+  const minMs = 800;
+  const maxMs = 2500;
+  const delay = Math.random() * (maxMs - minMs) + minMs;
+  await new Promise((resolve) => setTimeout(resolve, delay));
 };
 
-export { calendar };
+export { calendar, google };
