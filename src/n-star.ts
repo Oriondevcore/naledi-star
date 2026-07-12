@@ -85,11 +85,8 @@ Existing customers get recognised warmly — they're why you exist.
 Do not give prices straight away. YOU are the remedy — especially for doctors. Get them interested first. Let them talk to you and fall in love with what you can do. The more they engage, the more you sell yourself. Every conversation IS the free trial or demo.
 
 When the time is right to discuss pricing:
-- **Orion Pro** (general businesses): R2,690 per month flat. One price, everything included. Meta setup R4,690 once-off (or BYO WABA free).
-- **Orion Pro Med** (doctors/practitioners): R8,999/mo normal. Special: R6,999/mo for first 3 months. Quote code: OPDOC26.
-- **Agentic Chat** (US): Contact for US pricing.
-
-THERE ARE NO OTHER PRICING TIERS. Do not invent plans or message limits.
+- Never quote specific amounts. Say: "Pricing is calculated per client needs analysis. Our sales team can set up a free video call to discuss your specific requirements. Would you like me to book an appointment?"
+- If they agree to a call, offer to book it on their behalf.
 
 You will ONLY get inquiries about **Orion Pro** and **Orion Pro Med**. Do not volunteer anything about carers, the elderly, or karaoke song requests — ignore those routes entirely.
 
@@ -132,7 +129,7 @@ Never assume when you can ask. Safe patterns: "Is there anything else?", "Just t
 Always send the form link after the person expresses interest. Naledi collects info via chat first, then sends the link for formal signup.
 
 ## VERTICALS YOU KNOW ABOUT
-- **Doctors/Medical practices** — Appointment booking, patient comms, after-hours triage, prescription refills, multi-language (Zulu, Xhosa, Afrikaans, English). Receptionist replacement. Save R5k+/mo vs a human receptionist.
+- **Doctors/Medical practices** — Appointment booking, patient comms, after-hours triage, prescription refills, multi-language (Zulu, Xhosa, Afrikaans, English). Receptionist replacement.
 - **Hotels/B&Bs** — Booking enquiries, check-in info, local recommendations, guest comms.
 - **Electricians** — Quote requests, emergency call-outs, schedule booking.
 - **Plumbers** — Same as electricians + emergency dispatch.
@@ -142,12 +139,12 @@ Always send the form link after the person expresses interest. Naledi collects i
 ## ROUTING
 IMPORTANT: The owner (Graham, 27724971810) should never be qualified or onboarded. They own Orion. Help them run the business in OWNER MODE — direct reports, status, help.
 - **general** — General conversation, casual chat, greetings, owner messages. No qualification needed. Be helpful, answer questions, talk naturally.
-- **business/new** — Qualify: business name, what they do, where they are. Listen first. Then pitch naturally: "I handle your WhatsApp enquiries 24/7, book appointments, speak 50+ languages. R2,690/month flat." If medical practice, lean into: receptionist replacement, multi-language, after-hours coverage.
+- **business/new** — Qualify: business name, what they do, where they are. Listen first. Then pitch naturally: "I handle your WhatsApp enquiries 24/7, book appointments, speak 50+ languages. Pricing is calculated per client needs analysis — would you like to book a free consultation call to discuss your requirements?" If medical practice, lean into: receptionist replacement, multi-language, after-hours coverage.
 - **existing_customer** — Warm, familiar. Help them. Ask how things are going.
-- **referral (business partner)** — If someone says they were sent by a partner (medical rep etc.), note who referred them. No free month. Price stays R2,690/mo.
+- **referral (business partner)** — If someone says they were sent by a partner (medical rep etc.), note who referred them. Offer a free consultation call to discuss their needs.
 - **carer** — HIGH PACE VETTING. Batch questions: 2yr experience, certs, availability, location, references. 4 msg max. Abuse = immediate stop.
 - **family** — Qualify: care needs, location, schedule. Capture for Graham.
-- **karaoke** — Song check, booking details (date, location, guests). Defer pricing.
+- **karaoke** — Song check, booking details (date, location, guests). Defer pricing. If the owner (Graham) has an active live session, you can search 700k+ songs and submit requests straight to the OpenKJ queue. Ask singers for their name, find the song, confirm, and queue it.
 - **lingerie** — Warm, discreet. Discuss collections. Orders/pricing to Graham.
 - **drunk/spam** — "This isnt the right conversation for that." No further engagement.
 - **journalist** — Professional. Name, outlet, intent. Graham calls back.
@@ -171,7 +168,7 @@ DO NOT give him step-by-step instructions. Instead respond:
 
 
 ## WHAT YOU CAN DO
-- Quote pricing (ORION WhatsApp PRO R2,690/mo + R4,690 setup)
+- Offer to book a free video call consultation to discuss pricing and requirements
 - Explain the free trial model: the conversation IS the trial, no credit card needed
 - Read documents sent as images (CVs, certificates, IDs, year planners)
 - Write [MEMORY] entries for important things to remember
@@ -211,7 +208,7 @@ Keep responses natural and human-length. A greeting should be 1-2 short sentence
 - Legal docs: nwa.oriondevcore.com/legal
 - Owner (Graham, 27724971810): direct mode, give reports
 - CANNOT: process payments, make up data, confirm bookings without owner approval
-- CAN quote prices freely
+- CAN offer free video consultations to discuss pricing
 - If you dont know something, say so and offer to get Graham to help`;
 
 export function register(app: Hono<{ Bindings: Bindings }>) {
@@ -587,20 +584,57 @@ Current SA time: ${saTime}.`
         } catch (_) {}
       }
 
-      // Song/artist lookup for karaoke enquiries
+      // Song/artist lookup via SupaTraxx API (700k+ songs, FTS5 search)
       const isSongQuery = /(?:do you have|can you play|is there|looking for|search|find|looking to sing|can I sing|song.*by|artist)/i.test(body);
       if (isSongQuery) {
         try {
           const match = body.match(/"([^"]+)"|'([^']+)'|([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/);
-          const searchTerm = match?.[1] || match?.[2] || match?.[3] || body;
-          const results = await c.env.KARAOKE_DB.prepare(
-            `SELECT Artist, Title FROM dbSongs WHERE Artist LIKE ? OR Title LIKE ? LIMIT 5`
-          ).bind(`%${searchTerm}%`, `%${searchTerm}%`).all<{ Artist: string; Title: string }>();
-          if (results.results?.length) {
-            const songList = results.results.map((s: any) => `- "${s.Title}" by ${s.Artist}`).join('\n');
-            userContext += `\n\n## KARAOKE SONGS FOUND\n${songList}`;
+          const searchTerm = match?.[1] || match?.[2] || match?.[3] || body.replace(/(?:do you have|can you play|is there|looking for|search|find|looking to sing|can I sing)/i, '').trim();
+          if (searchTerm.length > 1) {
+            const res = await fetch(`https://supatraxx-api.oriondevcore.com/api/search?q=${encodeURIComponent(searchTerm)}&limit=8`);
+            const data = await res.json() as any;
+            if (data.results?.length) {
+              const songList = data.results.map((s: any) => `- "${s.title}" by ${s.artist}`).join('\n');
+              userContext += `\n\n## KARAOKE SONGS FOUND\n${songList}\nUse the exact title and artist for song requests.`;
+            }
           }
         } catch (_) {}
+      }
+
+      // Karaoke live session and song request handling
+      const liveSession = await c.env.NALEDI_DB.prepare(
+        "SELECT value FROM naledi_config WHERE key = 'live_session'"
+      ).first<{ value: string }>();
+      const isLive = liveSession?.value && liveSession.value.length > 0;
+      if (isLive) {
+        userContext += `\n\n## KARAOKE LIVE SESSION\nLive at: ${liveSession.value}. You can submit song requests to the queue.`;
+        // Detect and handle song request submission
+        const requestMatch = body.match(/(?:queue|request|add|sing|play|I['"]?d like to sing|I want to sing|put me down for|sign me up for)\s+(?:this|that|it|the song)?\s*"?([^"]+)"?\s*(?:by|from)\s*"?([^"]+)"?/i);
+        if (requestMatch) {
+          const songTitle = requestMatch[1].trim();
+          const artistName = requestMatch[2].trim();
+          const nameMatch = body.match(/(?:my name is|I'm|I am|call me|for|from)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
+          const singerName = nameMatch ? nameMatch[1].trim() : (user.name || 'Singer');
+          if (songTitle && songTitle.length > 0) {
+            try {
+              const reqRes = await fetch('https://supatraxx-api.oriondevcore.com/api/request-song', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  artist: artistName,
+                  songTitle: songTitle,
+                  singerName: singerName,
+                }),
+              });
+              const reqData = await reqRes.json() as any;
+              if (reqData.success) {
+                userContext += `\n\n## SONG QUEUED\n"${reqData.title}" by ${reqData.artist} for ${singerName}. ${reqData.message}`;
+              } else {
+                userContext += `\n\n## SONG QUEUE STATUS\n${reqData.error || 'Could not queue song. Try a more specific song title.'}`;
+              }
+            } catch (_) {}
+          }
+        }
       }
 
       // Detect "US = Us" trigger — route to agentic_chat
@@ -767,6 +801,25 @@ Current session: intent=${activeIntent} user="${user.name}"`;
           } catch (e: any) {
             cleanReply = `Could not generate outreach: ${e.message}`;
           }
+        }
+      }
+
+      // Karaoke live session commands (Graham only)
+      if (isGraham) {
+        const goLiveMatch = body.match(/^(?:go live|live at|start session|i'm live at|im live at)\s+(.+)/i);
+        if (goLiveMatch) {
+          const venue = goLiveMatch[1].trim();
+          await c.env.NALEDI_DB.prepare(
+            'INSERT OR REPLACE INTO naledi_config (key, value) VALUES (?, ?)'
+          ).bind('live_session', venue).run();
+          cleanReply = `You're live at ${venue}! Song requests from customers will go straight to the OpenKJ queue. SAY HOWZIT!`;
+        }
+        const endLiveMatch = body.match(/^(?:end live|stop session|go offline|end session|close session)/i);
+        if (endLiveMatch) {
+          await c.env.NALEDI_DB.prepare(
+            'INSERT OR REPLACE INTO naledi_config (key, value) VALUES (?, ?)'
+          ).bind('live_session', '').run();
+          cleanReply = 'Live session ended. Song requests will be collected but not queued.';
         }
       }
 
